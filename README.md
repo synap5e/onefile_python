@@ -16,7 +16,6 @@ Custom (python) import hooks are installed to support loading modules (both nati
 
 Currently the exe just drops to an interactive loop. Modification to run a script or embed a file/module should be trivial. 
 
-- [ ] Support `onefile_python.exe script.py`
 - [ ] Build option for embedding a python file/module and running that on launch
 - [ ] Support other versions of python than `3.10.1` (autodetect?)
 
@@ -32,7 +31,7 @@ py2exe supports a diskless/"bundle" mode.
 
 Both these projects are *much* more complex than this one and support lots of extra features, but sometimes you don't need that...
 
-This project is (maybe) better if you want a single exe that can run any python script [or will be once that is supported], or just want an exe that gives a python REPL.
+This project is (maybe) better if you want a single exe that can run any python script, or just want an exe that gives a python REPL.
 Being simpler, this project should be easier to hack on or learn from.
 
 
@@ -42,7 +41,7 @@ There's not much to it...
 
 0. Use nim's [staticRead](https://nim-lang.org/docs/system.html#staticRead%2Cstring) to include `python-*-embedded.zip` and `bootstrap.py` inside compiled exe itself.
 1. Use [zippy](https://github.com/guzba/zippy) to access the contents of the archive at runtime.
-2. Use [memlib](https://github.com/khchen/memlib) to perform reflective dll loading of the embedded `python*.dll`. Reflective dll loading allows for loading the dll from memory rather than from disk. Hook `LdrLoadDll` and `K32EnumProcessModules` so other code using the dll can find it. 
+2. Use [memlib](https://github.com/khchen/memlib) to perform reflective dll loading of the embedded `python*.dll`. Reflective dll loading allows for loading the dll from memory rather than from disk. Hook `LdrLoadDll` and `K32EnumProcessModules` so other code using the dll can find it. n.b. currently using a fork until https://github.com/khchen/memlib/pull/3 is merged.
 3. Call various functions in the (reflectively) loaded dll to partially initialize python. Configure python to not try to load anything from disk (not absolutely required, but prevents conflicts and means the exe doesn't run any code in the current directory)
 4. Use [nimpy](https://github.com/yglukhov/nimpy) to initialize a python extension exporting some nim functions that can read data out of the `python*.zip` standard library (contained within the `...-embedded.zip`).
 5. Run the embedded `bootsrap.py` code to install an import hook. This import hook uses the functions from (4) to support importing python modules. If a `.pyc` can be found that matches an import, a loader that returns the unmarshalled `.pyc` is provided. If a `.pyd` can be found, the returned loader reflectively loads the `.pyd` and calls the module's initialization routine.

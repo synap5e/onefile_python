@@ -7,16 +7,24 @@ import std/strutils
 import zippy/ziparchives
 import minhook
 import winim/lean
-
 import memlib
 import nimpy
 import nimpy/py_types
+import argparse
 
 import cpython_types
 
 
 const DEBUG = false  # Print debug messages (in nim code, and in python loaders)
 const EMBED_DLL = true  # Use the .dll embedded in the zip archive. If false, will require python310.dll to be in the PATH. If true, debugging may be harder as the dll is reflectively loaded
+
+
+let p = newParser("onefile_python"):
+  help("{prog}")
+  flag("-V", "--version")
+  option("-c", "--command", help="program passed in as string")
+  arg("file", default=some(""), help="program read from script file")
+  arg("arg", nargs=(-1), help="arguments passed to program in sys.argv[1:]")
 
 
 template `//`(a, b: untyped) : untyped = a div b
@@ -73,13 +81,21 @@ proc Py_SetProgramName(name: pointer): void {. memlib: python, importc: "Py_SetP
 proc Py_SetPath(path: pointer): void {. memlib: python, importc: "Py_SetPath", cdecl .}
 # proc PyConfig_InitPythonConfig(config: ptr PyConfig): void {. memlib: python, importc: "PyConfig_InitPythonConfig", cdecl .}
 proc PyConfig_InitIsolatedConfig(config: ptr PyConfig): void {. memlib: python, importc: "PyConfig_InitIsolatedConfig", cdecl .}
+proc PyConfig_SetArgv(r: PyStatus, config: ptr PyConfig, argc: int, argv: pointer): ptr PyStatus {. memlib: python, importc: "PyConfig_SetArgv", cdecl .}
 proc Py_InitializeFromConfig(r: PyStatus, config: ptr PyConfig): ptr PyStatus {. memlib: python, importc: "Py_InitializeFromConfig", cdecl .}
 proc PyUnicode_AsUTF8AndSize(obj: pointer, size: pointer): cstring {. memlib: python, importc: "PyUnicode_AsUTF8AndSize", cdecl .}
-proc PyRun_SimpleString(code: cstring): int {. memlib: python, importc: "PyRun_SimpleString", cdecl .}
 proc PyUnicode_FromString(str: cstring): pointer {. memlib: python, importc: "PyUnicode_FromString", cdecl .}
 proc PyImport_GetModuleDict(): pointer {. memlib: python, importc: "PyImport_GetModuleDict", cdecl .}
 proc PyImport_FixupExtensionObject(module: pointer, name: pointer, filename: pointer, modules: pointer): void {. memlib: python, importc: "_PyImport_FixupExtensionObject", cdecl .}
 proc PyModule_FromDefAndSpec2(def: PPyObject, spec: PPyObject, module: int): PPyObject {. memlib: python, importc: "PyModule_FromDefAndSpec2", cdecl .}
+
+proc Py_BuildValue(v1: cstring, v2: cstring): pointer {. memlib: python, importc: "Py_BuildValue", cdecl .}
+proc Py_fopen_obj(path: pointer, mode: cstring): pointer {. memlib: python, importc: "_Py_fopen_obj", cdecl .}
+proc PyRun_SimpleFile(fp: pointer, filename: cstring): cint {. memlib: python, importc: "PyRun_SimpleFile", cdecl .}
+
+proc Py_GetVersion(): cstring {. memlib: python, importc: "Py_GetVersion", cdecl .}
+
+proc PyRun_SimpleString(code: cstring): int {. memlib: python, importc: "PyRun_SimpleString", cdecl .}
 proc PyRun_InteractiveLoop(file: pointer, filename: cstring): int {. memlib: python, importc: "PyRun_InteractiveLoop", cdecl .}
 proc PyObject_Repr(obj: pointer): cstring {. memlib: python, importc: "PyObject_Repr", cdecl .}
 proc Py_InitializeMain(r: ptr PyStatus): ptr PyStatus {. memlib: python, importc: "_Py_InitializeMain", cdecl .}
@@ -138,10 +154,25 @@ proc PyInit_onefile_python(): pointer {. stdcall, importc: "PyInit_onefile_pytho
 const bootstrap_py = staticRead("bootstrap.py")
 
 
+proc parse_args: auto = 
+    try:
+        return p.parse(commandLineParams())
+    except ShortCircuit as e:
+        if e.flag == "argparse_help":
+            echo p.help
+            quit(1)
+    except UsageError:
+        stderr.writeLine getCurrentExceptionMsg()
+        quit(1)
+
+
 proc main = 
     var r: PyStatus
     var status: ptr PyStatus
     var res: int
+
+    var opts = parse_args()
+
 
     # Initial configuration - ignore argv, env vars (PYTHONHOME), any files, etc.
     var preconfig: PyPreConfig
@@ -164,17 +195,34 @@ proc main =
     config.init_main = 0
     when DEBUG:
         echo fmt"Py_InitializeFromConfig({config})"
+
+    var argv: array[256, pointer]
+    var argc = 0
+    if opts.file != "":
+        argv[argc] = Py_DecodeLocale(opts.file.cstring, NULL)
+        argc += 1
+    for arg in opts.arg:
+        argv[argc] = Py_DecodeLocale(arg.cstring, NULL)
+        argc += 1
+        if argc >= 256:
+            break
+    discard PyConfig_SetArgv(r, config, argc, argv.addr)
+
     status = Py_InitializeFromConfig(r, config)
     if PyStatus_Exception(status):
         Py_ExitStatusException(status)
         return
 
+    if opts.version:
+        echo $Py_GetVersion()
+        quit()
+
     # Set up "nimporter" to expose pyd_has, pyd_load, stdlib_has, stdlib_read
     when DEBUG:
-        echo "Loading nimporter module"
+        echo "Loading onefile_python python module"
     let modules = PyImport_GetModuleDict()
     let own_module = PyInit_onefile_python()
-    PyImport_FixupExtensionObject(own_module, PyUnicode_FromString("nimporter"), PyUnicode_FromString("<memory>"), modules)
+    PyImport_FixupExtensionObject(own_module, PyUnicode_FromString("onefile_python"), PyUnicode_FromString("<memory>"), modules)
 
     # Run `bootstrap.py` to install import hooks
     when DEBUG:
@@ -194,16 +242,24 @@ proc main =
 
     # Load dlls in the embedded archive. This seems to trigger AV if we call the nim function directly, but calling it via python is enough to bypass...
     res = PyRun_SimpleString("""
-import nimporter
-nimporter.load_dlls()
+import onefile_python
+onefile_python.load_dlls()
 """)
     if res > 0:
         echo "Error running nimporter.load_dlls()"
         return
 
-    # TODO parse cmdline and run .py, OR do loop, (or maybe run __autorun__.py)
-    # MAYBE: clean up scope from vars in bootstrap.py
-    discard PyRun_InteractiveLoop(stdin, "stdin")
-
+    # run modes: command, TODO: module, file, interactive
+    if opts.command != "":
+        discard PyRun_SimpleString(opts.command.cstring)
+    elif opts.file == "-" or opts.file == "":
+        discard PyRun_InteractiveLoop(stdin, "stdin")
+    elif opts.file != "-":
+        let filename_str = Py_BuildValue("s", opts.file.cstring)
+        let file = Py_fopen_obj(filename_str, "rb")
+        if file != NULL:
+            discard PyRun_SimpleFile(file, opts.file.cstring)
+        else:
+            echo fmt"can't open file '{opts.file}'"
 
 main()

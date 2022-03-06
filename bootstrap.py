@@ -4,7 +4,7 @@ import _imp
 import _frozen_importlib_external as _bootstrap_external
 import _frozen_importlib as _bootstrap
 
-from nimporter import *
+from onefile_python import *
 
 _bootstrap._install_external_importers()
 _bootstrap_external._set_bootstrap_module(_bootstrap)
