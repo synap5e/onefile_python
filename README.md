@@ -10,11 +10,9 @@ Custom (python) import hooks are installed to support loading modules (both nati
 0. Set up nim
 1. Download `python-3.10.1-embed-amd64.zip` to the project directory
 2. `nimble build`
-3. Run `onefile_python.exe`
+3. Run `onefile_python.exe` (REPL), `onefile_python.exe -c "print('Hello World')` (command), or `onefile_python.exe script.py --hello world` (script)
 
 ## TODO
-
-Currently the exe just drops to an interactive loop. Modification to run a script or embed a file/module should be trivial. 
 
 - [ ] Build option for embedding a python file/module and running that on launch
 - [ ] Support other versions of python than `3.10.1` (autodetect?)
