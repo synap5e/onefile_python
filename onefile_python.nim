@@ -253,6 +253,11 @@ proc main =
         echo $Py_GetVersion()
         quit()
 
+    # Required to let ctypes.pythonapi point to pythonX.dll instead of onefile_python.exe 
+    discard PyRun_SimpleString(fmt"import sys; sys.dllhandle = {python_dll_handle}".cstring)
+    when DEBUG:
+        echo fmt"Setting sys.dllhandle = {python_dll_handle}"
+
     # Set up "nimporter" to expose pyd_has, pyd_load, stdlib_has, stdlib_read
     when DEBUG:
         echo "Loading onefile_python python module"
