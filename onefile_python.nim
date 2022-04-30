@@ -293,6 +293,10 @@ onefile_python.load_dlls()
         discard PyRun_SimpleString(opts.command.cstring)
     elif opts.file == "-" or opts.file == "":
         discard PyRun_InteractiveLoop(stdin, "stdin")
+    elif opts.file.find("http://") == 0 or opts.file.find("https://") == 0:
+        # Hacky to use python, but means we don't need -d:ssl in the nim build
+        discard PyRun_SimpleString("import urllib.request")
+        discard PyRun_SimpleString(fmt"exec(urllib.request.urlopen('{opts.file.cstring}').read().decode())".cstring)
     elif opts.file != "-":
         let filename_str = Py_BuildValue("s", opts.file.cstring)
         let file = Py_fopen_obj(filename_str, "rb")
