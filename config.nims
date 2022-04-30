@@ -1,6 +1,7 @@
-
 --gc:orc
 --define:windows
+when defined(staged):
+  --define:ssl
 when defined(release):
   --define:danger
   --passL:"-Wl,--gc-sections,-flto,-s"  # gc sections, strip, link-time optimization

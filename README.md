@@ -2,22 +2,62 @@
 
 Run python from a single exe (without needing to extract anything to disk).
 
-This project uses reflective dll loading and nim's `staticRead` to load the python runtime from the executable itself.
+This project uses reflective dll loading and either nim's `staticRead` to load the python runtime from the executable itself, or optionally downloads the embedded zip on launch ("staged" mode).
 Custom (python) import hooks are installed to support loading modules (both native python (.pyc) and extension modules (.pyd)) from the embedded standard library.
 
-## HOWTO
+## Building
+
+Or just download from from the [releases page](https://github.com/synap5e/onefile_python/releases).
 
 0. Set up nim
+
+### Zip embedded in file
+
 1. Download `python-3.10.1-embed-amd64.zip` to the project directory
 2. `nimble build`
 3. Run `onefile_python.exe`
 
+### Download zip on launch ("staged")
+
+Potentially useful if you want a smaller exe.
+
+1. `nimble build -d:staged`
+2. Run `onefile_python.exe`
+
+
+## Usage
+
+```
+onefile_python
+
+Usage:
+  onefile_python [options] [file] [arg ...]
+
+Arguments:
+  [file]           Program; read from script file/URL ('-' or empty for interactive) (default: )
+  [arg ...]        Arguments passed to program in sys.argv[1:]
+
+Options:
+  -h, --help
+  -V, --version
+  -c, --command=COMMAND      Program; passed in as string
+```
+`file` can be a http or https URL.
+
+For staged version:
+```
+  -d, --download=DOWNLOAD    Download `python-3.10.1-embed-amd64.zip` from this url (default: https://www.python.org/ftp/python/3.10.1)
+
+```
+
+Alternatively specify the download URL in the app filename e.g. rename `onefile_python.exe` to `blabla(10.0.0.1)foobar.exe` to download python from `https://10.0.0.1/python-3.10.1-embed-amd64.zip`. `blabla` and `foobar` can be any string.
+
+
 ## TODO
 
-Currently the exe just drops to an interactive loop. Modification to run a script or embed a file/module should be trivial. 
-
-- [ ] Build option for embedding a python file/module and running that on launch
+- [ ] Build option for embedding a python file/module and running that on launch (instead of accepting file/interactive loop)
 - [ ] Support other versions of python than `3.10.1` (autodetect?)
+
 
 ## Similar projects
 
@@ -39,7 +79,7 @@ Being simpler, this project should be easier to hack on or learn from.
 
 There's not much to it...
 
-0. Use nim's [staticRead](https://nim-lang.org/docs/system.html#staticRead%2Cstring) to include `python-*-embedded.zip` and `bootstrap.py` inside compiled exe itself.
+0. Use nim's [staticRead](https://nim-lang.org/docs/system.html#staticRead%2Cstring) to include `python-*-embedded.zip` and `bootstrap.py` inside compiled exe itself OR download the zip from a URL.
 1. Use [zippy](https://github.com/guzba/zippy) to access the contents of the archive at runtime.
 2. Use [memlib](https://github.com/khchen/memlib) to perform reflective dll loading of the embedded `python*.dll`. Reflective dll loading allows for loading the dll from memory rather than from disk. Hook `LdrLoadDll` and `K32EnumProcessModules` so other code using the dll can find it. n.b. currently using a fork until https://github.com/khchen/memlib/pull/3 is merged.
 3. Call various functions in the (reflectively) loaded dll to partially initialize python. Configure python to not try to load anything from disk (not absolutely required, but prevents conflicts and means the exe doesn't run any code in the current directory)

@@ -19,6 +19,9 @@ const DEBUG = false  # Print debug messages (in nim code, and in python loaders)
 const EMBED_DLL = true  # Use the .dll embedded in the zip archive. If false, will require python310.dll to be in the PATH. If true, debugging may be harder as the dll is reflectively loaded
 
 const PYTHON_EMBEDDED_FILE = "python-3.10.1-embed-amd64.zip"
+when defined(staged):
+    const PYTHON_EMBEDDED_URL = "https://www.python.org/ftp/python/3.10.1"
+
 
 let arg_parser = newParser("onefile_python"):
   help("{prog}")
@@ -26,6 +29,12 @@ let arg_parser = newParser("onefile_python"):
   option("-c", "--command", help="Program; passed in as string")
   arg("file", default=some(""), help="Program; read from script file/URL ('-' or empty for interactive)")
   arg("arg", nargs=(-1), help="Arguments passed to program in sys.argv[1:]")
+  when defined(staged):
+    option("-d", "--download", help=fmt"Download `{PYTHON_EMBEDDED_FILE}` from this url", default=some(PYTHON_EMBEDDED_URL))
+when defined(staged):
+    const extra_help = fmt"Alternatively specify the download URL in the app filename e.g. `blabla(10.0.0.1)foobar.exe` means download from `https://10.0.0.1/{PYTHON_EMBEDDED_FILE}`."
+else:
+    const extra_help = ""
 
 
 template `//`(a, b: untyped) : untyped = a div b
@@ -46,6 +55,7 @@ proc parse_args: auto =
     except ShortCircuit as e:
         if e.flag == "argparse_help":
             echo arg_parser.help
+            echo extra_help
             quit(1)
     except UsageError:
         stderr.writeLine getCurrentExceptionMsg()
@@ -53,7 +63,19 @@ proc parse_args: auto =
 
 var opts = parse_args()
 
-const python_310_embedded_zip = staticRead(PYTHON_EMBEDDED_FILE)
+when not defined(staged):
+    const python_310_embedded_zip = staticRead(PYTHON_EMBEDDED_FILE)
+else:
+    var downloadUrl = opts.download & "/" & PYTHON_EMBEDDED_FILE;
+    let appFileName = getAppFilename().splitPath().tail;
+    if appFileName.count("(") == 1 and appFileName.count(")") == 1 and appFileName.find(")") > appFileName.find("("):
+        downloadUrl = "http://" & appFileName.substr(appFileName.find("(") + 1, appFileName.find(")") - 1) & "/" & PYTHON_EMBEDDED_FILE;
+
+    import std/httpclient
+    let client = newHttpClient()
+    echo fmt"Downloading from '{downloadUrl}'..."
+    let python_310_embedded_zip = client.getContent(downloadUrl)
+    echo "\tDone"
 
 var python_embedded = ZipArchive()
 python_embedded.open(newStringStream(python_310_embedded_zip))
