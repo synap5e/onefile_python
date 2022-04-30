@@ -12,8 +12,4 @@ requires "nim >= 1.6.2"
 requires "https://github.com/synap5e/memlib.git"  # Use fork while https://github.com/khchen/memlib/pull/3 is not merged
 requires "zippy >= 0.7.3"
 requires "nimpy >= 0.2.0"
-requires "nimpy >= 0.2.0"
 requires "https://github.com/iffy/nim-argparse"
-
-task build, "Build":
-    exec "nim -d:release c onefile_python.nim"
