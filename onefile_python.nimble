@@ -13,3 +13,4 @@ requires "https://github.com/synap5e/memlib.git"  # Use fork while https://githu
 requires "zippy >= 0.7.3"
 requires "nimpy >= 0.2.0"
 requires "https://github.com/iffy/nim-argparse"
+requires "puppy >= 1.5.3"

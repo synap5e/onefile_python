@@ -15,8 +15,8 @@ import argparse
 import cpython_types
 
 
-const DEBUG = false  # Print debug messages (in nim code, and in python loaders)
-const EMBED_DLL = true  # Use the .dll embedded in the zip archive. If false, will require python310.dll to be in the PATH. If true, debugging may be harder as the dll is reflectively loaded
+const DEBUG = defined(debug)  # Print debug messages (in nim code, and in python loaders)
+const EMBED_DLL = not defined(dont_embedd_dll)  # Use the .dll embedded in the zip archive. If false, will require python310.dll to be in the PATH. If true, debugging may be harder as the dll is reflectively loaded
 
 const PYTHON_EMBEDDED_FILE = "python-3.10.1-embed-amd64.zip"
 when defined(staged):
@@ -66,15 +66,14 @@ var opts = parse_args()
 when not defined(staged):
     const python_310_embedded_zip = staticRead(PYTHON_EMBEDDED_FILE)
 else:
-    var downloadUrl = opts.download & "/" & PYTHON_EMBEDDED_FILE;
-    let appFileName = getAppFilename().splitPath().tail;
+    var downloadUrl = opts.download & "/" & PYTHON_EMBEDDED_FILE
+    let appFileName = getAppFilename().splitPath().tail
     if appFileName.count("(") == 1 and appFileName.count(")") == 1 and appFileName.find(")") > appFileName.find("("):
-        downloadUrl = "http://" & appFileName.substr(appFileName.find("(") + 1, appFileName.find(")") - 1) & "/" & PYTHON_EMBEDDED_FILE;
+        downloadUrl = "http://" & appFileName.substr(appFileName.find("(") + 1, appFileName.find(")") - 1) & "/" & PYTHON_EMBEDDED_FILE
 
-    import std/httpclient
-    let client = newHttpClient()
+    import puppy
     echo fmt"Downloading from '{downloadUrl}'..."
-    let python_310_embedded_zip = client.getContent(downloadUrl)
+    let python_310_embedded_zip = fetch(downloadUrl)
     echo "\tDone"
 
 var python_embedded = ZipArchive()
@@ -159,9 +158,10 @@ type
 
 proc load_dlls(): void {. exportpy .} = 
     # TODO: foreach .dll in archive rather than hardcode
-    for dllname in ["libffi-7.dll", "libcrypto-1_1.dll", "libssl-1_1.dll", "sqlite3.dll"]:
+    for dllname in [ "libffi-7.dll", "libcrypto-1_1.dll", "libssl-1_1.dll", "sqlite3.dll"]:
         let lib = checkedLoadLib(python_embedded.contents[dllname].contents.bytes)
         lib.hook(dllname)
+        debug(fmt"Loaded {dllname} => 0x{LoadLibraryA(dllname):x}")
 
 proc pyzip_has_pyd(name: string): bool {. exportpy .} =
     return python_embedded.contents.contains(name)
@@ -211,7 +211,7 @@ type PyMemoryModule = ref object of PyNimObjectExperimental
     module: MemoryModule
 
 proc loadlib(data: seq[byte]): PyMemoryModule {. exportpy .} =
-    return PyMemoryModule(module: checkedLoadLib(data));
+    return PyMemoryModule(module: checkedLoadLib(data))
 
 proc hook(self: PyMemoryModule, name: string): void {. exportpy .} =
     self.module.hook(name)
@@ -308,7 +308,7 @@ import onefile_python
 onefile_python.load_dlls()
 """)
     if res > 0:
-        echo "Error running nimporter.load_dlls()"
+        echo "Error running onefile_python.load_dlls()"
         return
 
     if opts.command != "":
