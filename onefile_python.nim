@@ -5,7 +5,6 @@ import std/tables
 import std/strutils
 
 import zippy/ziparchives
-import minhook
 import winim/lean
 import memlib
 import nimpy
@@ -83,25 +82,6 @@ var python_stdlib = ZipArchive()
 python_stdlib.open(newStringStream(python_embedded.contents["python310.zip"].contents))  # TODO: detect what version
 
 const dll_name = "python310.dll"
-
-# hook so python shows up for nimpy
-proc K32EnumProcessModules(hProcess: HANDLE, lphModule: ptr UncheckedArray[HMODULE], cb: DWORD, cbNeeded: ptr DWORD): WINBOOL {. dynlib: "kernel32", importc: "K32EnumProcessModules", stdcall.}
-proc myEnumProcessModules(hProcess: HANDLE, lphModule: ptr UncheckedArray[HMODULE], cb: DWORD, cbNeeded: ptr DWORD): WINBOOL {.stdcall, minhook: K32EnumProcessModules.} =
-    result = K32EnumProcessModules(hProcess, lphModule, cb, cbNeeded)
-    if result == 1:
-        var sz = cbNeeded[] // 8
-        var mx = cb // 8
-        if DEBUG:
-            echo fmt"EnumProcessModules(0x{cast[uint](hProcess):x}, 0x{cast[uint](lphModule):x}, 0x{cast[uint](cb):x}, 0x{cast[uint](cbNeeded):x} => {sz}) => {result}"
-            echo fmt"   0x{cast[uint](lphModule[0]):x}, ..., 0x{cast[uint](lphModule[sz-1]):x}, 0x{cast[uint](lphModule[sz]):x}"
-        if sz < mx:
-            lphModule[sz] = LoadLibraryA(dll_name)
-            if DEBUG:
-                echo fmt"   > Appending library handle: 0x{cast[uint](lphModule[0]):x}, ..., 0x{cast[uint](lphModule[sz-1]):x}, 0x{cast[uint](lphModule[sz]):x}"
-                echo ""
-            cbNeeded[] = sz + 8
-
-enableHook(K32EnumProcessModules)
 
 
 when EMBED_DLL:
